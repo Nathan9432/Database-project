@@ -9,12 +9,12 @@ namespace InterviewProject_Net
 {
 	public partial class CustomerForm : Form
 	{
-		private readonly string connectionString;
+		private QueryController qc;
         private DataGridViewCellCollection row;
 
-		public CustomerForm(string connectionString)
+		public CustomerForm(QueryController qc)
 		{
-            this.connectionString = connectionString; 
+            this.qc = qc; 
 			InitializeComponent();			
 		}
 
@@ -29,7 +29,7 @@ namespace InterviewProject_Net
 		{
             //Show Order form with relevant data
             var customerId = (int) dataGridView1.Rows[e.RowIndex].Cells[0].Value; // ID is the first collumn, and is hidden.
-            OrderForm orderForm = new OrderForm(connectionString, true, customerId); // Tells the Order Form to only show orders that are related to this customer
+            OrderForm orderForm = new OrderForm(qc, true, customerId); // Tells the Order Form to only show orders that are related to this customer
             orderForm.ShowDialog(this); // ...And as a modal dialog box, ie, that it must be dismissed before the user can return.
         }
 
@@ -62,37 +62,34 @@ namespace InterviewProject_Net
                 return;
             }
 
-            CreateOrderForm customerForm = new CreateOrderForm(connectionString, id);
+            CreateOrderForm customerForm = new CreateOrderForm(qc, id);
             customerForm.ShowDialog(this);
         }
 
         private void AddCustomerButton_Click(object sender, EventArgs e)
         {
-			// This will just tell the DB to add a new customer
-			using (SqlConnection connection = new SqlConnection(connectionString))
+			int zip;
+			try
 			{
-				int zip;
-				try
-				{
-					zip = int.Parse(zipTextBox.Text);
-                }
-                catch (FormatException)
-                {
-                    // Dialog warning: cannot format zip code
-                    MessageBox.Show("An error has occurred: The zip code could not be converted. Are you sure you only included numbers?", "Warning");
-                    return;
-                }
-                connection.Open();
-				string query = "INSERT INTO dbo.Customers VALUES(@firstname,@lastname,@address,@city,@state,@zip)";
-				SqlCommand cmd = new SqlCommand(query, connection);
-				cmd.Parameters.Add("@firstname", SqlDbType.NVarChar).Value = firstNameTextBox.Text;
-				cmd.Parameters.Add("@lastname", SqlDbType.NVarChar).Value = lastNameTextBox.Text;
-				cmd.Parameters.Add("@address", SqlDbType.NVarChar).Value = addressTextBox.Text;
-				cmd.Parameters.Add("@city", SqlDbType.NVarChar).Value = cityTextBox.Text;
-				cmd.Parameters.Add("@state", SqlDbType.NVarChar).Value = stateTextBox.Text;
-				cmd.Parameters.Add("@zip", SqlDbType.Int).Value = zip;
-				cmd.ExecuteNonQuery();
-            }
+				zip = int.Parse(zipTextBox.Text);
+			} catch (FormatException)
+			{
+				// Dialog warning: cannot format zip code
+				MessageBox.Show("An error has occurred: The zip code could not be converted. Are you sure you only included numbers?", "Warning");
+				return;
+			}
+			string query = "INSERT INTO dbo.Customers VALUES(@firstname,@lastname,@address,@city,@state,@zip)";
+            Dictionary<string, (SqlDbType, object)> parameters = new Dictionary<string, (SqlDbType, object)>
+            {
+                { "@firstname", (SqlDbType.NVarChar, firstNameTextBox.Text) },
+				{ "@lastname", (SqlDbType.NVarChar, lastNameTextBox.Text) },
+				{ "@address", (SqlDbType.NVarChar, addressTextBox.Text) },
+				{ "@city", (SqlDbType.NVarChar, cityTextBox.Text) },
+				{ "@state", (SqlDbType.NVarChar, stateTextBox.Text) },
+				{ "@zip", (SqlDbType.Int, zip) }
+			};
+            qc.ExecuteQuery(query, parameters);
+            
             RefreshData();
         }
 
@@ -125,32 +122,28 @@ namespace InterviewProject_Net
                 MessageBox.Show("An error has occurred: while trying to find the selected row's ID, it failed to parse to an int.");
                 return;
             }
-
-            using (SqlConnection connection = new SqlConnection(connectionString))
-            {
-                int zip;
-                try
-                {
-                    zip = int.Parse(zipTextBox.Text);
-                }
-                catch (FormatException)
-                {
-                    // Dialog warning: cannot format zip code
-
-                    return;
-                }
-                connection.Open();
-                string query = "UPDATE dbo.Customers SET FirstName = @firstname, LastName = @lastname, Address = @address, City = @city, State = @state, ZipCode = @zip WHERE Id = @Id";
-                SqlCommand cmd = new SqlCommand(query, connection);
-                cmd.Parameters.Add("@firstname", SqlDbType.NVarChar).Value = firstNameTextBox.Text;
-                cmd.Parameters.Add("@lastname", SqlDbType.NVarChar).Value = lastNameTextBox.Text;
-                cmd.Parameters.Add("@address", SqlDbType.NVarChar).Value = addressTextBox.Text;
-                cmd.Parameters.Add("@city", SqlDbType.NVarChar).Value = cityTextBox.Text;
-                cmd.Parameters.Add("@state", SqlDbType.NVarChar).Value = stateTextBox.Text;
-                cmd.Parameters.Add("@zip", SqlDbType.Int).Value = zip;
-                cmd.Parameters.Add("@Id", SqlDbType.Int).Value = id;
-                cmd.ExecuteNonQuery();
-            }
+			int zip;
+			try
+			{
+				zip = int.Parse(zipTextBox.Text);
+			} catch (FormatException)
+			{
+				// Dialog warning: cannot format zip code
+				MessageBox.Show("An error has occurred: The zip code could not be converted. Are you sure you only included numbers?", "Warning");
+				return;
+			}
+			string query = "UPDATE dbo.Customers SET FirstName = @firstname, LastName = @lastname, Address = @address, City = @city, State = @state, ZipCode = @zip WHERE Id = @Id";
+			Dictionary<string, (SqlDbType, object)> parameters = new Dictionary<string, (SqlDbType, object)>
+			{
+				{ "@firstname", (SqlDbType.NVarChar, firstNameTextBox.Text) },
+				{ "@lastname", (SqlDbType.NVarChar, lastNameTextBox.Text) },
+				{ "@address", (SqlDbType.NVarChar, addressTextBox.Text) },
+				{ "@city", (SqlDbType.NVarChar, cityTextBox.Text) },
+				{ "@state", (SqlDbType.NVarChar, stateTextBox.Text) },
+				{ "@zip", (SqlDbType.Int, zip) },
+				{ "@Id", (SqlDbType.Int, id) }
+			};
+			qc.ExecuteQuery(query, parameters);
             RefreshData();
         }
 
@@ -187,84 +180,60 @@ namespace InterviewProject_Net
 			// Now, deleting a customer could leave orders and order details hanging out in the air. Let's make sure that doesn't happen.
 			// First, let's detect if there is anything that should also be deleted, and inform the user, letting them back out of a cascading deletion.
 			// Checking DB
-			int count;
-            using (SqlConnection connection = new SqlConnection(connectionString))
-            {
-                connection.Open();
-                string query = "SELECT COUNT(*) FROM dbo.Orders WHERE CustomerId = @Id";
-                SqlCommand cmd = new SqlCommand(query, connection);
-                cmd.Parameters.Add("@Id", SqlDbType.Int).Value = id;
-                count = (int) cmd.ExecuteScalar();
-            }
+			string query = "SELECT COUNT(*) FROM dbo.Orders WHERE CustomerId = @Id"; 
+            Dictionary<string, (SqlDbType, object)> parameters = new Dictionary<string, (SqlDbType, object)>
+			{
+				{ "@Id", (SqlDbType.Int, id) }
+			};
+			int count = qc.ExecuteQuery_ReturnScalar(query, parameters);
             if (count > 0)
 			{
 				DialogResult res = MessageBox.Show("Continuing with this deletion will delete the orders and details pertaining to this customer. Do you wish to continue?", "Confirmation",MessageBoxButtons.YesNo);
 				if (res == DialogResult.Yes)
 				{
-                    using (SqlConnection connection = new SqlConnection(connectionString))
-                    {
-                        // Grabbing Order IDs
-						connection.Open();
-                        string query = "SELECT Id FROM dbo.Orders WHERE CustomerId = @Id";
-                        SqlCommand cmd = new SqlCommand(query, connection);
-                        cmd.Parameters.Add("@Id", SqlDbType.Int).Value = id;
-						List<int> values = new List<int>();
-						try
-						{
-							SqlDataReader dr = cmd.ExecuteReader();
-                            while (dr.Read())
-                            {
-								values.Add(dr.GetInt32(0));
-                            }
-                            dr.Close();
-                        }
-						catch (SqlException oError)
-						{
-                            MessageBox.Show("There was an SQL error while deleting the extra information: "+oError.ToString(), "Error",MessageBoxButtons.OK, MessageBoxIcon.Error);
-							return;
-                        }
+					query = "SELECT Id FROM dbo.Orders WHERE CustomerId = @Id";
+					parameters = new Dictionary<string, (SqlDbType, object)>
+			        {
+				        { "@Id", (SqlDbType.Int, id) }
+			        };
+                    List<int> values = qc.ExecuteQuery_ReturnList(query, parameters);
 
-						// Deleting Order Details
-						foreach (var value in values)
-						{
-							query = "DELETE FROM dbo.OrderDetails WHERE OrderId = @Id";
-							cmd = new SqlCommand(query, connection);
-                            cmd.Parameters.Add("@Id", SqlDbType.Int).Value = value;
-							cmd.ExecuteNonQuery();
-                        }
-
-                        // Delete appropriate Orders
-                        query = "DELETE FROM dbo.Orders WHERE CustomerId = @Id";
-                        cmd = new SqlCommand(query, connection);
-                        cmd.Parameters.Add("@Id", SqlDbType.Int).Value = id;
-                        cmd.ExecuteNonQuery();
-                    }
+					query = "DELETE FROM dbo.OrderDetails WHERE OrderId = @Id";
+					foreach (var value in values)
+					{
+						parameters = new Dictionary<string, (SqlDbType, object)>
+					    {
+						    { "@Id", (SqlDbType.Int, value) }
+					    };
+						qc.ExecuteQuery(query, parameters);
+					}
+					query = "DELETE FROM dbo.Orders WHERE CustomerId = @Id";
+					parameters = new Dictionary<string, (SqlDbType, object)>
+					{
+						{ "@Id", (SqlDbType.Int, id) }
+					};
+					qc.ExecuteQuery(query, parameters);
                 }
 				else { return; } // User backed out, do not delete anything
 			}
 
-			// Everything has been cleared out; now the customer can be safely deleted
-			using (SqlConnection connection = new SqlConnection(connectionString))
+            // Everything has been cleared out; now the customer can be safely deleted
+            query = "DELETE FROM dbo.Customers WHERE Id = @Id";
+			parameters = new Dictionary<string, (SqlDbType, object)>
 			{
-				connection.Open();
-                string query = "DELETE FROM dbo.Customers WHERE Id = @Id";
-                SqlCommand cmd = new SqlCommand(query, connection);
-                cmd.Parameters.Add("@Id", SqlDbType.Int).Value = id;
-				cmd.ExecuteNonQuery();
-            }
+				{ "@Id", (SqlDbType.Int, id) }
+			};
+            qc.ExecuteQuery(query, parameters);
             RefreshData();
         }
 
         private void RefreshData()
         {
-            using (SqlConnection connection = new SqlConnection(connectionString))
-            {
-                connection.Open();
-                var dt = new DataTable();
-                SqlDataAdapter adapter = new SqlDataAdapter("SELECT * FROM dbo.Customers", connection);
-                adapter.Fill(dt);
-                dataGridView1.DataSource = dt;
-            }
+            //var dt = new DataTable();
+            //SqlDataAdapter adapter = qc.GetAdapter("SELECT * FROM dbo.Customers");
+            //adapter.Fill(dt);
+			var dt = qc.GetDataTable("SELECT * FROM dbo.Customers");
+			dataGridView1.DataSource = dt;
         }
 
 		private void DataGridView1_SelectionChanged(object sender, EventArgs e)

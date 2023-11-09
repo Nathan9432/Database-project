@@ -1,13 +1,15 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Security.Cryptography;
 using System.Windows.Forms;
 
 namespace InterviewProject_Net
 {
 	public partial class OrderForm : Form
 	{
-		private readonly string connectionString;
+		private QueryController qc;
 
 		/// <summary>
 		/// Initializes the Order Form
@@ -15,41 +17,25 @@ namespace InterviewProject_Net
 		/// <param name="connectionString">Standardized string used to connect to the SQL DB</param>
 		/// <param name="specific">Whether or not this form should start off in specified or general form. If true, include identifier</param>
 		/// <param name="identifier">What id should be used to filter the table</param>
-		public OrderForm(string connectionString, bool specific, int identifier = 0)
+		public OrderForm(QueryController qc, bool specific, int identifier = 0)
         {
-            this.connectionString = connectionString;
+            this.qc = qc;
             InitializeComponent();
 
             if (specific)
 			{
 				// Construct the string of Order Ids for the specific view
-				using (SqlConnection connection = new SqlConnection(connectionString))
+				string query = "SELECT Id FROM dbo.Orders WHERE CustomerId = @Id";
+				Dictionary<string, (SqlDbType, object)> parameters = new Dictionary<string, (SqlDbType, object)>
 				{
-                    // Grabbing Order IDs
-                    connection.Open();
-                    string query = "SELECT Id FROM dbo.Orders WHERE CustomerId = @Id";
-                    SqlCommand cmd = new SqlCommand(query, connection);
-                    cmd.Parameters.Add("@Id", SqlDbType.Int).Value = identifier;
-                    string orders = "";
-                    try
-                    {
-                        using (SqlDataReader dr = cmd.ExecuteReader())
-                        {
-                            while (dr.Read())
-                            {
-                                orders += dr.GetInt32(0) + ",";
-                            }
-                        }
-                    }
-                    catch (SqlException oError)
-                    {
-                        MessageBox.Show("There was an SQL error while reading information from the server: " + oError.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
-
-                    if (orders.Length == 0) postInitialize("0");
-					else postInitialize(orders.Remove(orders.Length-1));
-				}
+					{ "@Id", (SqlDbType.Int, identifier) }
+				};
+				List<int> values = qc.ExecuteQuery_ReturnList(query, parameters);
+				string orders = "";
+				foreach (var value in values)
+					orders += value + ",";
+				if (orders.Length == 0) postInitialize("0");
+				else postInitialize(orders.Remove(orders.Length - 1));
             }
         }
 
@@ -65,54 +51,27 @@ namespace InterviewProject_Net
         {
             if (dataGridView1.SelectedRows.Count == 0) return;
             var orderId = (int) dataGridView1.SelectedRows[0].Cells[1].Value; // Grabs orderId
-            using (SqlConnection connection = new SqlConnection(connectionString))
-            {
-                string orderName;
-                int customerId;
-                string shipDate;
-                // First, we want to call to grab the Order for the Order Name and Ship Date
-				connection.Open();
-				string query = "SELECT OrderName, CustomerId, ShipDate FROM dbo.Orders WHERE Id = @OrderId";
-				SqlCommand cmd = new SqlCommand(query, connection);
-				cmd.Parameters.Add("@OrderId", SqlDbType.Int).Value = orderId;
-				try
-				{
-					using (SqlDataReader dr = cmd.ExecuteReader())
-					{
-						dr.Read();
-						orderName = dr[0].ToString();
-						customerId = int.Parse(dr[1].ToString());
-						shipDate = dr[2].ToString();
-					}
-				}
-				catch (SqlException oError)
-				{
-					MessageBox.Show("There was an SQL error while reading information from the server: " + oError.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-					return;
-				}
-				// Next, we want to grab the Customer from that to get the Customer Name
-				string name;
-				query = "SELECT FirstName, LastName FROM dbo.Customers WHERE Id = @CustomerId";
-				cmd = new SqlCommand(query, connection);
-				cmd.Parameters.Add("@CustomerId", SqlDbType.Int).Value = customerId;
-				try
-				{
-					using (SqlDataReader dr = cmd.ExecuteReader())
-					{
-						dr.Read();
-						name = dr[0].ToString() + " " + dr[1].ToString();
-					}
-				}
-				catch (SqlException oError)
-				{
-					MessageBox.Show("There was an SQL error while reading information from the server: " + oError.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-					return;
-				}
+            string query = "SELECT OrderName, CustomerId, ShipDate FROM dbo.Orders WHERE Id = @OrderId";
+			Dictionary<string, (SqlDbType, object)> parameters = new Dictionary<string, (SqlDbType, object)>
+			{
+				{ "@OrderId", (SqlDbType.Int, orderId) }
+			};
+			var values = qc.ExecuteQuery_ReturnColumns(query, parameters, 3);
+			string orderName = values[0].ToString();
+			int customerId = int.Parse(values[1].ToString());
+			string shipDate = values[2].ToString();
 
-				orderLabel.Text = "Order Name: " + orderName;
-				customerLabel.Text = "Customer Name: " + name;
-				shipDateLabel.Text = "Ship Date: " + shipDate;
-			}
+			query = "SELECT FirstName, LastName FROM dbo.Customers WHERE Id = @CustomerId";
+			parameters = new Dictionary<string, (SqlDbType, object)>
+			{
+				{ "@CustomerId", (SqlDbType.Int, customerId) }
+			};
+			values = qc.ExecuteQuery_ReturnColumns(query, parameters, 2);
+			string name = values[0].ToString() + " " + values[1].ToString();
+
+			orderLabel.Text = "Order Name: " + orderName;
+			customerLabel.Text = "Customer Name: " + name;
+			shipDateLabel.Text = "Ship Date: " + shipDate;
         }
 	}
 }

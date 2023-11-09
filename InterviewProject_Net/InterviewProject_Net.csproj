@@ -49,6 +49,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="QueryController.cs" />
     <Compile Include="CreateOrderForm.cs">
       <SubType>Form</SubType>
     </Compile>

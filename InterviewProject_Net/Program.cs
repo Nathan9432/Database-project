@@ -12,6 +12,7 @@ namespace InterviewProject_Net
 		static void Main()
 		{
             string connectionString = @"Data Source=localhost;Initial Catalog=InterviewProject;Integrated Security=True";
+			QueryController qc = new QueryController(connectionString);
 
             // Just checking the connection
             /*using (SqlConnection connection = new SqlConnection(connectionString))
@@ -21,7 +22,7 @@ namespace InterviewProject_Net
 
             Application.EnableVisualStyles();
 			Application.SetCompatibleTextRenderingDefault(false);
-			Application.Run(new MainForm(connectionString));
+			Application.Run(new MainForm(qc));
 		}
 	}
 }

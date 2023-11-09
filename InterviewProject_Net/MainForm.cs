@@ -12,23 +12,23 @@ namespace InterviewProject_Net
 {
 	public partial class MainForm : Form
 	{
-		private string connectionString;
+		private QueryController qc;
 
-		public MainForm(string connectionString)
+		public MainForm(QueryController qc)
 		{
-			this.connectionString = connectionString;
+			this.qc = qc;
 			InitializeComponent();
 		}
 
 		private void buttonCustomers_Click(object sender, EventArgs e)
 		{
-			CustomerForm customerForm = new CustomerForm(connectionString);
+			CustomerForm customerForm = new CustomerForm(qc);
 			customerForm.ShowDialog(this);
 		}
 
 		private void buttonOrders_Click(object sender, EventArgs e)
 		{
-			OrderForm orderForm = new OrderForm(connectionString, false);
+			OrderForm orderForm = new OrderForm(qc, false);
 			orderForm.ShowDialog(this);
 		}
 	}
